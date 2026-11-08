@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flea Market Price Calculator</title>
+<style>
+  :root{
+    --bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--line:#2a2f3a;--text:#e6e8ec;--muted:#8b93a3;
+    --accent:#d9b25c;--good:#4fbf7f;--bad:#e06464;--warn:#e0a24f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 18px 48px}
+  h1{font-size:22px;margin:0 0 4px;letter-spacing:.3px}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 20px;font-size:13px}
+  .grid{display:grid;grid-template-columns:330px 1fr;gap:18px}
+  @media(max-width:840px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:0 0 12px;font-weight:600}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+  input[type=number],input[type=text],select{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:7px;padding:9px 10px;font-size:15px;font-variant-numeric:tabular-nums}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .check{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--text);cursor:pointer}
+  .check input{accent-color:var(--accent);width:16px;height:16px}
+  details{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+  summary{cursor:pointer;color:var(--muted);font-size:13px}
+  .helper{background:var(--panel2);border:1px dashed var(--line);border-radius:8px;padding:10px;margin-top:8px}
+  .helper button{margin-top:8px;background:var(--accent);color:#1a1405;border:0;border-radius:6px;padding:6px 10px;font-weight:600;cursor:pointer;font-size:13px}
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:640px){.kpis{grid-template-columns:1fr}}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi.main{border-color:var(--accent);box-shadow:0 0 0 1px rgba(217,178,92,.25) inset}
+  .kpi .lbl{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+  .kpi .val{font-size:26px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+  .kpi.main .val{color:var(--accent)}
+  .kpi.peak{border-color:#5c9bd9;box-shadow:0 0 0 1px rgba(92,155,217,.25) inset}
+  .kpi.peak .val{color:#7fb3e6}
+  tr.peakrow td{background:rgba(92,155,217,.10)}
+  tr.peakrow td:first-child{color:#7fb3e6;font-weight:700}
+  tr.minrow td:first-child{color:var(--text);font-weight:600}
+  .cmp{font-size:12px;color:var(--muted);margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+  .kpi .det{font-size:13px;color:var(--muted)}
+  .tag{display:inline-block;font-size:11px;padding:3px 8px;border-radius:12px;margin-top:6px;font-weight:600;line-height:1.35}
+  .tag.ok{background:rgba(79,191,127,.15);color:var(--good)}
+  .tag.warn{background:rgba(224,162,79,.15);color:var(--warn)}
+  .tag.bad{background:rgba(224,100,100,.15);color:var(--bad)}
+  .pos{color:var(--good)} .neg{color:var(--bad)}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);text-align:right;font-weight:600;padding:8px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 8px;text-align:right;border-bottom:1px solid #20242d}
+  tr.sugg td{background:rgba(217,178,92,.10)}
+  tr.sugg td:first-child{color:var(--accent);font-weight:700}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:var(--panel2)}
+  .barcell{width:18%}
+  .bar{height:8px;border-radius:4px;background:var(--good);min-width:2px}
+  .bar.n{background:var(--bad)}
+  .mkt{font-size:11px;color:var(--muted)}
+  .slider{margin:4px 0 16px}
+  .slider input{width:100%;accent-color:var(--accent)}
+  .slidevals{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);flex-wrap:wrap;gap:6px}
+  .slidevals b{color:var(--text)}
+  .tablewrap{overflow-x:auto}
+  .foot{font-size:12px;color:var(--muted);margin-top:12px}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Flea Market <span>Price Calculator</span></h1>
+  <p class="sub">Fees are calculated with the Tarkov flea market tax formula at every price, so each row reflects what you'd actually pay to list.</p>
+
+  <div class="grid">
+    <!-- INPUTS -->
+    <div class="card">
+      <h2>Inputs</h2>
+      <label for="minPrice" style="margin-top:0">Current minimum list price (per item)</label>
+      <input id="minPrice" type="number" min="0" step="1" value="50000">
+
+      <label for="qty">Quantity</label>
+      <input id="qty" type="number" min="1" step="1" value="1">
+
+      <div class="row2">
+        <div>
+          <label for="qd">Qty buffer % per doubling</label>
+          <input id="qd" type="number" min="0" step="0.5" value="1">
+        </div>
+        <div>
+          <label for="qmax">Max qty buffer %</label>
+          <input id="qmax" type="number" min="0" max="90" step="1" value="10">
+        </div>
+      </div>
+      <div class="hint" id="qHint">Bigger stacks stay listed longer, so there's more chance of being undercut. Each doubling of quantity drops the optimal price this much further below the minimum.</div>
+
+      <label for="base">Item base price (per item)</label>
+      <input id="base" type="number" min="1" step="1" value="30000">
+      <div class="hint">Base price drives the listing fee. Don't know it? Use the helper below.</div>
+
+      <details>
+        <summary>Base price helper (from a trader's buy price)</summary>
+        <div class="helper">
+          <div class="row2">
+            <div>
+              <label for="trader" style="margin-top:0">Trader</label>
+              <select id="trader">
+                <option value="0.5">Prapor</option>
+                <option value="0.63" selected>Therapist</option>
+                <option value="0.4">Fence</option>
+                <option value="0.49">Skier</option>
+                <option value="0.45">Peacekeeper</option>
+                <option value="0.56">Mechanic</option>
+                <option value="0.62">Ragman</option>
+                <option value="0.6">Jaeger</option>
+              </select>
+            </div>
+            <div>
+              <label for="traderPrice" style="margin-top:0">Trader pays</label>
+              <input id="traderPrice" type="number" min="0" step="1" placeholder="e.g. 18900">
+            </div>
+          </div>
+          <div class="hint" id="helperOut">Use a full-durability item. Wear lowers the trader price.</div>
+          <button id="useBase" type="button">Use as base price</button>
+        </div>
+      </details>
+
+      <h2 style="margin-top:18px">Fee reductions</h2>
+      <label class="check"><input id="intel" type="checkbox"> Intelligence Center level 3 (−30%)</label>
+      <label for="hm">Hideout Management skill level</label>
+      <input id="hm" type="number" min="0" max="51" step="1" value="0">
+      <div class="hint">Each level adds 0.3% to the Intel Center discount (up to 45%). Only applies with Intel Center 3.</div>
+
+      <details>
+        <summary>Margin &amp; advanced settings</summary>
+        <label for="cost">Your cost per item <span style="opacity:.7">(0 if looted)</span></label>
+        <input id="cost" type="number" min="0" step="1" value="0">
+        <div class="row2">
+          <div>
+            <label for="margin">Target margin %</label>
+            <input id="margin" type="number" min="0" max="95" step="1" value="20">
+          </div>
+          <div>
+            <label for="undercut">Undercut by</label>
+            <input id="undercut" type="number" min="0" step="1" value="1">
+          </div>
+        </div>
+        <div class="row2">
+          <div>
+            <label for="ti">Ti constant</label>
+            <input id="ti" type="number" min="0" step="0.001" value="0.03">
+          </div>
+          <div>
+            <label for="tr">Tr constant</label>
+            <input id="tr" type="number" min="0" step="0.001" value="0.03">
+          </div>
+        </div>
+        <div class="hint">Ti/Tr are the game's tax rates (0.03 each). Only change them if a patch changes them.</div>
+      </details>
+    </div>
+
+    <!-- RESULTS -->
+    <div>
+      <div class="kpis">
+        <div class="kpi main">
+          <div class="lbl">Optimal list price</div>
+          <div class="val" id="kSugg">–</div>
+          <div class="det" id="kSuggDet"></div>
+          <div id="kSuggTag"></div>
+        </div>
+        <div class="kpi peak">
+          <div class="lbl">Margin peak price</div>
+          <div class="val" id="kPeak">–</div>
+          <div class="det" id="kPeakDet"></div>
+          <div class="cmp" id="kCmp"></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">Profit at current minimum</div>
+          <div class="val" id="kMin">–</div>
+          <div class="det" id="kMinDet"></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">Listing fee at optimal</div>
+          <div class="val" id="kMax">–</div>
+          <div class="det" id="kMaxDet"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Price scale (±50% of optimal, plus margin peak &amp; current min)</h2>
+        <div class="slider">
+          <input id="slide" type="range" min="-50" max="50" step="1" value="0">
+          <div class="slidevals" id="slideVals"></div>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>Δ</th><th>List price</th><th>Revenue</th><th>Fee</th><th>Profit</th><th>Margin</th><th class="barcell"></th>
+            </tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="foot">
+          Fee = <code>VO·Ti·4<sup>PO</sup>·Q + VR·Tr·4<sup>PR</sup>·Q</code>, where VO = base price, VR = your list price,
+          PO = log₁₀(VO/VR), PR = log₁₀(VR/VO). The positive exponent is raised to the 1.08 power.
+          Then the Intel Center / Hideout Management discount is applied. Fees are paid when you list, even if the item never sells.
+          Check the "Fee at current min" figure against the game. If they don't match, the base price is probably off.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const ids = ['minPrice','qty','qd','qmax','base','hm','cost','margin','undercut','ti','tr','trader','traderPrice'];
+  let slidePct = 0;
+
+  try{
+    const s = JSON.parse(localStorage.getItem('fleaCalc2')||'null');
+    if(s){ ids.forEach(k=>{ if(s[k]!==undefined) $(k).value=s[k]; }); $('intel').checked=!!s.intel; }
+  }catch(e){}
+  function save(){
+    try{ const o={intel:$('intel').checked}; ids.forEach(k=>o[k]=$(k).value); localStorage.setItem('fleaCalc2',JSON.stringify(o)); }catch(e){}
+  }
+
+  const num = (id,d=0)=>{ const v=parseFloat($(id).value); return isFinite(v)?v:d; };
+  const fmt = n => (n<0?'-':'') + '₽' + Math.round(Math.abs(n)).toLocaleString();
+
+  // Tarkov flea tax for one listing of qty items at per-item price P
+  function fleaFee(P, s){
+    if(P<=0 || s.base<=0) return 0;
+    const VO = s.base, VR = P;
+    let PO = Math.log10(VO/VR), PR = Math.log10(VR/VO);
+    if(VR < VO) PO = Math.pow(PO,1.08); else PR = Math.pow(PR,1.08);
+    const raw = (VO*s.ti*Math.pow(4,PO) + VR*s.tr*Math.pow(4,PR)) * s.qty;
+    return Math.round(raw * (1 - s.disc));
+  }
+
+  function calc(price, s){
+    const revenue = price*s.qty;
+    const fee = fleaFee(price,s);
+    const profit = revenue - fee - s.cost*s.qty;
+    const margin = revenue>0 ? profit/revenue : 0;
+    return {price,revenue,fee,profit,margin};
+  }
+
+  function render(){
+    const intel = $('intel').checked;
+    const hm = Math.min(51,Math.max(0,Math.floor(num('hm'))));
+    const s = {
+      min:Math.max(0,num('minPrice')), qty:Math.max(1,Math.floor(num('qty',1))),
+      base:Math.max(0,num('base')), cost:Math.max(0,num('cost')),
+      m:Math.min(95,Math.max(0,num('margin')))/100, under:Math.max(0,num('undercut')),
+      ti:Math.max(0,num('ti',0.03)), tr:Math.max(0,num('tr',0.03)),
+      disc: intel ? 0.30 + 0.003*hm : 0,
+      qd:Math.max(0,num('qd',1))/100, qmax:Math.min(90,Math.max(0,num('qmax',10)))/100
+    };
+
+    // Scan prices (log-spaced) for margin floor and max-profit price
+    const hi = Math.max(s.min, s.base, 1) * 20;
+    const N = 3000;
+    let floor = null, prevP = 1;
+    for(let i=0;i<=N;i++){
+      const P = Math.max(1, Math.round(Math.exp(Math.log(1) + (Math.log(hi))*i/N)));
+      const r = calc(P,s);
+      if(floor===null && r.margin >= s.m && r.profit >= 0){
+        // refine between prevP and P
+        let lo=prevP, up=P;
+        while(up-lo>1){ const mid=Math.floor((lo+up)/2); const rm=calc(mid,s); if(rm.margin>=s.m && rm.profit>=0) up=mid; else lo=mid; }
+        floor = up;
+      }
+      prevP = P;
+    }
+
+    const qBuf = Math.min(s.qmax, s.qd*Math.log2(s.qty));
+    const competitive = Math.max(1, Math.floor(s.min*(1-qBuf)) - s.under);
+    const qBufAmt = s.min - competitive - s.under;
+    $('qHint').innerHTML = s.qty>1
+      ? `<b style="color:var(--text)">${s.qty} items → ${(qBuf*100).toFixed(1)}% buffer (${fmt(qBufAmt)} per item)</b>${qBuf>=s.qmax&&s.qmax>0?' (capped)':''}. More items stay listed longer, so there's more chance of being undercut.`
+      : 'Bigger stacks stay listed longer, so there\'s more chance of being undercut. Each doubling of quantity drops the optimal price this much further below the minimum.';
+    let sugg, status;
+    if(floor===null){ sugg = competitive; status='bad'; }
+    else if(competitive >= floor){ sugg = competitive; status='ok'; }
+    else { sugg = floor; status='warn'; }
+
+    const rs = calc(sugg,s);
+    const plain = calc(Math.max(1,s.min - s.under),s);
+    $('kSugg').textContent = fmt(sugg);
+    $('kSuggDet').innerHTML = `Fee ${fmt(rs.fee)} · profit <b class="${rs.profit>=0?'pos':'neg'}">${fmt(rs.profit)}</b> · ${(rs.margin*100).toFixed(1)}%` + (s.qty>1?` · ${s.qty} items`:'') +
+      (qBuf>0 && status==='ok' ? `<br>Buffer costs ${fmt(plain.profit-rs.profit)} vs. a plain ${fmt(s.under)} undercut · ${fmt(rs.fee)} fee at risk if undercut` : '');
+    const pctTxt = Math.round(s.m*100)+'%';
+    $('kSuggTag').innerHTML = {
+      ok:  `<span class="tag ok">Undercuts market by ${fmt(s.min-sugg)}${qBuf>0?` (incl. ${(qBuf*100).toFixed(1)}% qty buffer)`:''} and clears ${pctTxt} margin</span>`,
+      warn:`<span class="tag warn">Market too low for ${pctTxt} margin after fees. Priced ${fmt(sugg - s.min)} above min, may sell slowly</span>`,
+      bad: `<span class="tag bad">No price reaches ${pctTxt} margin after fees. Showing undercut price</span>`
+    }[status];
+
+    // Margin peak: scan log-spaced prices, then refine
+    let pk = null;
+    const pLo = Math.max(1, Math.min(s.base, s.min||s.base)*0.05), pHi = Math.max(s.base, s.min, 1)*50;
+    for(let i=0;i<=4000;i++){
+      const P = Math.max(1, Math.round(pLo*Math.pow(pHi/pLo, i/4000)));
+      const r = calc(P,s);
+      if(!pk || r.margin > pk.margin) pk = r;
+    }
+    if(pk){
+      let step = Math.max(1, Math.round(pk.price*0.01));
+      while(step>=1){
+        let moved=true;
+        while(moved){ moved=false;
+          for(const d of [step,-step]){ const P=pk.price+d; if(P<1) continue; const c=calc(P,s); if(c.margin>pk.margin){pk=c;moved=true;} }
+        }
+        step=Math.floor(step/2);
+      }
+    }
+    $('kPeak').textContent = fmt(pk.price);
+    $('kPeakDet').innerHTML = `Fee ${fmt(pk.fee)} · profit <b class="${pk.profit>=0?'pos':'neg'}">${fmt(pk.profit)}</b> · <b>${(pk.margin*100).toFixed(2)}%</b>` +
+      (s.base>0?`<br>${(pk.price/s.base).toFixed(2)}× base price`:'');
+    const dP = rs.profit - pk.profit, dM = (rs.margin - pk.margin)*100, rel = pk.price - s.min;
+    $('kCmp').innerHTML = `Optimal vs peak: profit <b class="${dP>=0?'pos':'neg'}">${dP>=0?'+':''}${fmt(dP)}</b>, margin ${dM>=0?'+':''}${(Math.abs(dM)<0.005?0:dM).toFixed(2)} pts. ` +
+      (rel>0 ? `Peak is ${fmt(rel)} <b>above</b> current min, so it likely won't sell fast.` :
+       rel<0 ? `Peak is ${fmt(-rel)} <b>below</b> current min, so you'd be underselling.` : `Peak equals current min.`);
+
+    const rm = calc(s.min,s);
+    $('kMin').textContent = fmt(rm.profit);
+    $('kMin').className = 'val ' + (rm.profit>=0?'pos':'neg');
+    $('kMinDet').textContent = `Fee at current min: ${fmt(rm.fee)} · margin ${(rm.margin*100).toFixed(1)}%`;
+
+    $('kMax').textContent = fmt(rs.fee);
+    const feePct = rs.revenue>0 ? rs.fee/rs.revenue*100 : 0;
+    $('kMaxDet').innerHTML = `${feePct.toFixed(1)}% of revenue · ${fmt(rs.fee/s.qty)} per item<br>Paid upfront, not refunded if unsold`;
+
+    const rows=[];
+    for(let p=-50;p<=50;p+=10) rows.push({pct:p,label:null,...calc(Math.max(1,Math.round(sugg*(1+p/100))),s)});
+    const extra = (price,label,cls)=>{ const pct=sugg>0?(price/sugg-1)*100:0; rows.push({pct:Math.round(pct),label,cls,...calc(price,s)}); };
+    if(pk.price!==sugg) extra(pk.price,'Margin peak','peakrow');
+    if(s.min>0 && s.min!==sugg && s.min!==pk.price) extra(s.min,'Current min','minrow');
+    rows.sort((a,b)=>a.price-b.price);
+    const maxAbs = Math.max(1,...rows.map(r=>Math.abs(r.profit)));
+    $('tbody').innerHTML = rows.map(r=>{
+      const mkt = r.price < s.min ? 'below min' : (r.price===s.min ? 'at min' : 'above min');
+      const cls = r.cls || (r.pct===0 && !r.label ? 'sugg' : '');
+      const first = r.label ? `${r.label}<div class="mkt">${r.pct>0?'+':''}${r.pct}%</div>`
+                  : (r.pct===0 ? `Optimal<div class="mkt">0%</div>` : `${r.pct>0?'+':''}${r.pct}%`);
+      return `<tr class="${cls}" data-p="${Math.max(-50,Math.min(50,r.pct))}">
+        <td>${first}</td>
+        <td>${fmt(r.price)}<div class="mkt">${mkt}</div></td>
+        <td>${fmt(r.revenue)}</td>
+        <td>${fmt(r.fee)}</td>
+        <td class="${r.profit>=0?'pos':'neg'}"><b>${fmt(r.profit)}</b></td>
+        <td>${(r.margin*100).toFixed(1)}%</td>
+        <td class="barcell"><div class="bar ${r.profit<0?'n':''}" style="width:${Math.abs(r.profit)/maxAbs*100}%"></div></td>
+      </tr>`;
+    }).join('');
+
+    const rsl = calc(Math.max(1,Math.round(sugg*(1+slidePct/100))),s);
+    $('slideVals').innerHTML =
+      `<span>Δ <b>${slidePct>0?'+':''}${slidePct}%</b></span>
+       <span>Price <b>${fmt(rsl.price)}</b></span>
+       <span>Fee <b>${fmt(rsl.fee)}</b></span>
+       <span>Profit <b class="${rsl.profit>=0?'pos':'neg'}">${fmt(rsl.profit)}</b></span>
+       <span>Margin <b>${(rsl.margin*100).toFixed(1)}%</b></span>`;
+
+    // helper readout
+    const tp = num('traderPrice'), mult = num('trader',0.63);
+    $('helperOut').textContent = tp>0 ? `Base price ≈ ${fmt(tp/mult)} (${fmt(tp)} ÷ ${mult})` : 'Use a full-durability item. Wear lowers the trader price.';
+    save();
+  }
+
+  ids.forEach(k=>$(k).addEventListener('input',render));
+  $('intel').addEventListener('change',render);
+  $('useBase').addEventListener('click',()=>{
+    const tp=num('traderPrice'), mult=num('trader',0.63);
+    if(tp>0){ $('base').value=Math.round(tp/mult); render(); }
+  });
+  $('slide').addEventListener('input',e=>{ slidePct=+e.target.value; render(); });
+  $('tbody').addEventListener('click',e=>{
+    const tr=e.target.closest('tr'); if(!tr) return;
+    slidePct=+tr.dataset.p; $('slide').value=slidePct; render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
