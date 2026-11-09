@@ -411,24 +411,44 @@
   try{ item = JSON.parse(localStorage.getItem('fleaCalcItem')||'null'); }catch(e){}
   try{ const m=localStorage.getItem('fleaCalcMode'); if(m) $('mode').value=m; }catch(e){}
 
+  // Try transports in order; remember the first one that works.
+  // 1) POST JSON (standard)  2) GET ?query= (no CORS preflight)  3) POST text/plain (no preflight)
+  let transport = null; try{ transport = localStorage.getItem('fleaCalcTransport'); }catch(e){}
+  const TRANSPORTS = {
+    post: (q,v)=>fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,variables:v})}),
+    get:  (q,v)=>fetch(API+'?query='+encodeURIComponent(q)+(v?'&variables='+encodeURIComponent(JSON.stringify(v)):'')),
+    text: (q,v)=>fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({query:q,variables:v})})
+  };
   async function gql(query, variables){
-    const res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,variables})});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const j = await res.json();
-    if(j.errors && !j.data) throw new Error(j.errors.map(e=>e.message).join('; '));
-    if(j.errors) console.warn('tarkov.dev', j.errors);
-    return j.data;
+    const order = transport ? [transport, ...Object.keys(TRANSPORTS).filter(t=>t!==transport)] : Object.keys(TRANSPORTS);
+    const errs = [];
+    for(const t of order){
+      try{
+        const res = await TRANSPORTS[t](query, variables);
+        const txt = await res.text();
+        let j; try{ j = JSON.parse(txt); }catch(e){ throw new Error(`HTTP ${res.status}, non-JSON reply`); }
+        if(j.errors && !j.data) throw Object.assign(new Error(j.errors.map(e=>e.message).join('; ')),{gqlError:true});
+        if(!res.ok && !j.data) throw new Error('HTTP '+res.status);
+        if(j.errors) console.warn('tarkov.dev', j.errors);
+        if(transport!==t){ transport=t; try{ localStorage.setItem('fleaCalcTransport',t); }catch(e){} }
+        return j.data;
+      }catch(e){
+        if(e.gqlError) throw e;            // server reached; query problem, so don't retry other transports
+        errs.push(`${t}: ${e.message||e}`); console.warn('tarkov.dev', t, e);
+      }
+    }
+    throw new Error(errs.join(' | '));
   }
   const modeArg = () => $('mode').value==='pve' ? ', gameMode: pve' : '';
   const FIELDS = 'id name shortName basePrice lastLowPrice avg24hPrice low24hPrice lastOfferCount updated iconLink';
 
   function apiDown(err){
-    const blocked = /Failed to fetch|NetworkError|Load failed|blocked/i.test(String(err&&err.message||err));
-    $('lookupMsg').innerHTML = blocked
+    const msg = esc(String(err&&err.message||err));
+    const sandboxed = !/github\.io$/.test(location.hostname) && /Failed to fetch|NetworkError|Load failed/i.test(msg);
+    $('lookupMsg').innerHTML = sandboxed
       ? 'Live lookup is blocked on this page. Use the GitHub Pages version: <a href="https://dafoolchillypop.github.io/tarktools/flea-market/" style="color:var(--accent)">dafoolchillypop.github.io/tarktools/flea-market/</a>'
-      : 'tarkov.dev error: ' + String(err.message||err);
+      : `<span style="color:var(--warn)">Couldn't reach api.tarkov.dev.</span> An ad/script blocker, privacy shield or work/school network filter is the usual cause. Try allowing <code>api.tarkov.dev</code>, or open <a href="https://api.tarkov.dev" style="color:var(--accent)">api.tarkov.dev</a> in a tab to check it's up. Manual entry still works.<br><span style="opacity:.7">Details: ${msg}</span>`;
   }
-
   let searchTimer=null, searchSeq=0, results=[], act=-1;
   async function doSearch(q){
     const seq=++searchSeq;
