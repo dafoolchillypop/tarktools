@@ -3,6 +3,19 @@
 A single-page, no-dependency calculator for pricing Escape from Tarkov flea market listings.
 Open `index.html` in any browser. Inputs are remembered in your browser's local storage.
 
+## Item lookup (tarkov.dev)
+Search any item by name (PvP or PvE) to fill in its **base price** and **current lowest flea price** from the
+community [tarkov.dev](https://tarkov.dev) GraphQL API (`https://api.tarkov.dev/graphql`, free, no key).
+Both fields stay editable, because API prices can trail the live market.
+
+When an item is selected, the calculator also asks tarkov.dev for its `fleaMarketFee` at the optimal price and at the
+current minimum, and shows ✓ (within 1%) or ≠ next to its own fee, so formula drift after a patch is visible.
+
+The lookup needs the GitHub Pages version (https://dafoolchillypop.github.io/tarktools/flea-market/). Pages that block
+outside requests (such as the Claude-hosted preview) fall back to manual entry.
+
+This is read-only market data. Nothing here interacts with the game client or your account.
+
 ## Inputs
 - **Current minimum list price** (per item)
 - **Quantity**

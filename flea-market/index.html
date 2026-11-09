@@ -68,6 +68,25 @@
   .slidevals b{color:var(--text)}
   .tablewrap{overflow-x:auto}
   .foot{font-size:12px;color:var(--muted);margin-top:12px}
+  .lookup{position:relative;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .lookup .top{display:flex;gap:8px}
+  .lookup .top input{flex:1}
+  .lookup select{width:auto;padding:9px 6px}
+  .results{position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    max-height:320px;overflow:auto;margin-top:-10px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+  .results:empty{display:none}
+  .res{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer;font-size:13px}
+  .res:hover,.res.act{background:#262b36}
+  .res img{width:32px;height:32px;object-fit:contain;background:#111;border-radius:4px}
+  .res .nm{flex:1}
+  .res .pr{color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+  .chip{display:flex;align-items:center;gap:10px;margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted)}
+  .chip img{width:36px;height:36px;object-fit:contain}
+  .chip b{color:var(--text);font-size:13px}
+  .chip .x{margin-left:auto;cursor:pointer;color:var(--muted);background:none;border:0;font-size:16px}
+  .chip button.ref{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:12px}
+  .api{font-size:12px;margin-top:6px}
+  .api.ok{color:var(--good)} .api.bad{color:var(--warn)} .api.off{color:var(--muted)}
   code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
 </style>
 </head>
@@ -79,6 +98,16 @@
   <div class="grid">
     <!-- INPUTS -->
     <div class="card">
+      <h2>Item lookup <span style="text-transform:none;letter-spacing:0">(tarkov.dev)</span></h2>
+      <div class="lookup">
+        <div class="top">
+          <input id="search" type="text" placeholder="Search item, e.g. LEDX, Salewa, M995" autocomplete="off">
+          <select id="mode" title="Game mode"><option value="regular">PvP</option><option value="pve">PvE</option></select>
+        </div>
+        <div class="results" id="results"></div>
+        <div id="chip"></div>
+        <div class="hint" id="lookupMsg">Pick an item to fill in its base price and current lowest flea price. You can still edit both.</div>
+      </div>
       <h2>Inputs</h2>
       <label for="minPrice" style="margin-top:0">Current minimum list price (per item)</label>
       <input id="minPrice" type="number" min="0" step="1" value="50000">
@@ -182,11 +211,13 @@
           <div class="lbl">Profit at current minimum</div>
           <div class="val" id="kMin">–</div>
           <div class="det" id="kMinDet"></div>
+          <div class="api off" id="apiMin"></div>
         </div>
         <div class="kpi">
           <div class="lbl">Listing fee at optimal</div>
           <div class="val" id="kMax">–</div>
           <div class="det" id="kMaxDet"></div>
+          <div class="api off" id="apiOpt"></div>
         </div>
       </div>
 
@@ -371,7 +402,118 @@
     const tp = num('traderPrice'), mult = num('trader',0.63);
     $('helperOut').textContent = tp>0 ? `Base price ≈ ${fmt(tp/mult)} (${fmt(tp)} ÷ ${mult})` : 'Use a full-durability item. Wear lowers the trader price.';
     save();
+    scheduleFeeCheck(sugg, s, rs.fee, rm.fee, intel, hm);
   }
+
+  // ---------- tarkov.dev integration ----------
+  const API = 'https://api.tarkov.dev/graphql';
+  let item = null;          // {id,name,shortName,basePrice,lastLowPrice,avg24hPrice,updated,iconLink,mode}
+  try{ item = JSON.parse(localStorage.getItem('fleaCalcItem')||'null'); }catch(e){}
+  try{ const m=localStorage.getItem('fleaCalcMode'); if(m) $('mode').value=m; }catch(e){}
+
+  async function gql(query, variables){
+    const res = await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,variables})});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j = await res.json();
+    if(j.errors && !j.data) throw new Error(j.errors.map(e=>e.message).join('; '));
+    if(j.errors) console.warn('tarkov.dev', j.errors);
+    return j.data;
+  }
+  const modeArg = () => $('mode').value==='pve' ? ', gameMode: pve' : '';
+  const FIELDS = 'id name shortName basePrice lastLowPrice avg24hPrice low24hPrice lastOfferCount updated iconLink';
+
+  function apiDown(err){
+    const blocked = /Failed to fetch|NetworkError|Load failed|blocked/i.test(String(err&&err.message||err));
+    $('lookupMsg').innerHTML = blocked
+      ? 'Live lookup is blocked on this page. Use the GitHub Pages version: <a href="https://dafoolchillypop.github.io/tarktools/flea-market/" style="color:var(--accent)">dafoolchillypop.github.io/tarktools/flea-market/</a>'
+      : 'tarkov.dev error: ' + String(err.message||err);
+  }
+
+  let searchTimer=null, searchSeq=0, results=[], act=-1;
+  async function doSearch(q){
+    const seq=++searchSeq;
+    if(q.trim().length<2){ $('results').innerHTML=''; return; }
+    try{
+      let data;
+      try{ data = await gql(`query($n:String){ items(name:$n, limit:15${modeArg()}){ ${FIELDS} } }`,{n:q}); }
+      catch(e){ if(/limit/i.test(e.message)) data = await gql(`query($n:String){ items(name:$n${modeArg()}){ ${FIELDS} } }`,{n:q}); else throw e; }
+      if(seq!==searchSeq) return;
+      results = (data.items||[]).slice(0,15); act=-1;
+      $('results').innerHTML = results.length ? results.map((it,i)=>
+        `<div class="res" data-i="${i}">${it.iconLink?`<img src="${it.iconLink}" alt="">`:''}
+          <span class="nm">${esc(it.name)}</span>
+          <span class="pr">${it.lastLowPrice?fmt(it.lastLowPrice):'no flea'}<br><span style="font-size:11px">base ${fmt(it.basePrice||0)}</span></span></div>`).join('')
+        : '<div class="res" style="cursor:default">No matches</div>';
+    }catch(e){ if(seq===searchSeq){ $('results').innerHTML=''; apiDown(e); } }
+  }
+  const esc = t => String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function selectItem(it, fill=true){
+    item = {...it, mode:$('mode').value};
+    try{ localStorage.setItem('fleaCalcItem',JSON.stringify(item)); }catch(e){}
+    $('results').innerHTML=''; $('search').value='';
+    if(fill){
+      if(it.basePrice) $('base').value = it.basePrice;
+      if(it.lastLowPrice) $('minPrice').value = it.lastLowPrice;
+    }
+    renderChip();
+    render();
+  }
+  function renderChip(){
+    if(!item){ $('chip').innerHTML=''; return; }
+    const age = item.updated ? Math.round((Date.now()-new Date(item.updated))/60000) : null;
+    const ageTxt = age==null ? '' : age<60 ? `${age}m ago` : `${Math.round(age/60)}h ago`;
+    $('chip').innerHTML = `<div class="chip">${item.iconLink?`<img src="${item.iconLink}" alt="">`:''}
+      <div><b>${esc(item.name)}</b> <span>(${item.mode==='pve'?'PvE':'PvP'})</span><br>
+      Low ${item.lastLowPrice?fmt(item.lastLowPrice):'n/a (not on flea)'} · 24h avg ${item.avg24hPrice?fmt(item.avg24hPrice):'n/a'} · base ${fmt(item.basePrice||0)}${ageTxt?` · updated ${ageTxt}`:''}</div>
+      <button class="ref" id="refresh" title="Re-fetch prices">↻</button><button class="x" id="clearItem" title="Clear item">×</button></div>`;
+    $('lookupMsg').textContent = item.lastLowPrice ? 'Filled from tarkov.dev. Prices can trail the live market, so edit the minimum if the game shows something different.'
+                                                  : 'This item has no current flea offers on tarkov.dev (it may be flea-banned). Enter the minimum manually.';
+    $('refresh').onclick = refreshItem;
+    $('clearItem').onclick = ()=>{ item=null; try{localStorage.removeItem('fleaCalcItem');}catch(e){} renderChip(); $('lookupMsg').textContent='Pick an item to fill in its base price and current lowest flea price. You can still edit both.'; render(); };
+  }
+  async function refreshItem(){
+    if(!item) return;
+    try{
+      const d = await gql(`query($id:ID){ item(id:$id${modeArg()}){ ${FIELDS} } }`,{id:item.id});
+      if(d.item) selectItem(d.item);
+    }catch(e){ apiDown(e); }
+  }
+
+  // Cross-check our fee against tarkov.dev's fleaMarketFee
+  let feeTimer=null, feeSeq=0;
+  function scheduleFeeCheck(sugg, s, ourOpt, ourMin, intel, hm){
+    clearTimeout(feeTimer);
+    if(!item){ $('apiOpt').textContent=''; $('apiMin').textContent=''; return; }
+    feeTimer = setTimeout(async ()=>{
+      const seq=++feeSeq;
+      const args = `intelCenterLevel:${intel?3:0}, hideoutManagementLevel:${hm}, count:${s.qty}`;
+      try{
+        const d = await gql(`query($id:ID){ item(id:$id${modeArg()}){
+            opt: fleaMarketFee(price:${Math.round(sugg)}, ${args})
+            min: fleaMarketFee(price:${Math.round(s.min)||1}, ${args}) } }`,{id:item.id});
+        if(seq!==feeSeq || !d.item) return;
+        show('apiOpt', d.item.opt, ourOpt); show('apiMin', d.item.min, ourMin);
+      }catch(e){ $('apiOpt').className='api off'; $('apiOpt').textContent='tarkov.dev fee check unavailable'; $('apiMin').textContent=''; }
+    }, 500);
+    function show(el, api, ours){
+      if(api==null){ $(el).className='api off'; $(el).textContent=''; return; }
+      const diff = Math.abs(api-ours), ok = diff <= Math.max(2, ours*0.01);
+      $(el).className = 'api ' + (ok?'ok':'bad');
+      $(el).textContent = ok ? `✓ tarkov.dev fee ${fmt(api)} matches` : `≠ tarkov.dev fee ${fmt(api)} (ours ${fmt(ours)}, off by ${fmt(diff)})`;
+    }
+  }
+
+  $('search').addEventListener('input',e=>{ clearTimeout(searchTimer); const q=e.target.value; searchTimer=setTimeout(()=>doSearch(q),300); });
+  $('search').addEventListener('keydown',e=>{
+    const rows=[...$('results').querySelectorAll('.res[data-i]')]; if(!rows.length) return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); act=(act+(e.key==='ArrowDown'?1:-1)+rows.length)%rows.length; rows.forEach((r,i)=>r.classList.toggle('act',i===act)); }
+    if(e.key==='Enter'){ e.preventDefault(); selectItem(results[act<0?0:act]); }
+    if(e.key==='Escape'){ $('results').innerHTML=''; }
+  });
+  $('results').addEventListener('click',e=>{ const r=e.target.closest('.res[data-i]'); if(r) selectItem(results[+r.dataset.i]); });
+  document.addEventListener('click',e=>{ if(!e.target.closest('.lookup')) $('results').innerHTML=''; });
+  $('mode').addEventListener('change',()=>{ try{localStorage.setItem('fleaCalcMode',$('mode').value);}catch(e){} if(item) refreshItem(); else if($('search').value) doSearch($('search').value); });
 
   ids.forEach(k=>$(k).addEventListener('input',render));
   $('intel').addEventListener('change',render);
@@ -384,6 +526,7 @@
     const tr=e.target.closest('tr'); if(!tr) return;
     slidePct=+tr.dataset.p; $('slide').value=slidePct; render();
   });
+  renderChip();
   render();
 })();
 </script>
